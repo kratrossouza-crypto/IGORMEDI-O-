@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ficha de Medição - Paredes e Cantos</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#eee;font-family:Arial,sans-serif;color:#111}
+.page{max-width:900px;margin:auto;background:#fff;min-height:100vh;padding:14px}
+h1{text-align:center;font-size:22px;margin:4px 0 14px}
+.header{display:grid;grid-template-columns:1fr 1fr;gap:9px;border:1px solid #222;padding:10px;margin-bottom:12px}
+label{font-size:12px;font-weight:bold}
+input{width:100%;margin-top:4px;padding:9px;border:1px solid #888;border-radius:5px;font-size:16px;background:#fff}
+.section{font-weight:bold;background:#222;color:#fff;padding:7px;margin-top:10px}
+table{width:100%;border-collapse:collapse}
+th,td{border:1px solid #777;padding:5px;text-align:center;font-size:12px}
+th{background:#e8e8e8}
+.medicao{max-width:150px;margin:0 auto;padding:7px;text-align:center}
+.status{font-weight:bold}
+.ok{color:#087a28}
+.irregular{color:#b00020}
+.naopreenchido{color:#777}
+.summary{border:2px solid #222;margin-top:14px;padding:10px}
+.summary h2{font-size:16px;margin:0 0 9px}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.card{text-align:center;border:1px solid #888;padding:9px;border-radius:5px}
+.number{display:block;font-size:22px;font-weight:bold;margin:3px 0}
+.buttons{display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-top:12px}
+button{padding:12px;border:0;border-radius:5px;background:#222;color:#fff;font-weight:bold;font-size:14px}
+button.secondary{background:#666}
+.saved{text-align:center;font-size:12px;margin-top:7px;color:#087a28;min-height:16px}
+@media(max-width:600px){.cards{grid-template-columns:1fr}.page{padding:9px}th,td{padding:4px}.medicao{max-width:120px}}
+@media print{
+ @page{size:A4;margin:7mm}
+ body{background:#fff}.page{padding:0;max-width:none}
+ .buttons,.saved{display:none}
+ input{border:0;padding:2px;background:#fff}
+ .header{padding:7px;margin-bottom:7px}
+ .section{margin-top:5px;padding:5px}
+ th,td{padding:3px;font-size:10px}
+ .summary{margin-top:8px;padding:7px}
+}
+</style>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#222222">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Medição">
+<style>
+#installBtn{display:none;background:#087a28}
+</style>
+</head>
+<body>
+<div class="page">
+<h1>FICHA DE MEDIÇÃO — PAREDES E CANTOS</h1>
+
+<div class="header">
+<label>CICLO<input id="ciclo" type="text" placeholder="Digite o ciclo"></label>
+<label>APT<input id="apt" type="text" placeholder="Digite o apartamento"></label>
+<label>DATA DE PRÉ<input id="dataPre" type="date"></label>
+<label>DATA DE PÓS<input id="dataPos" type="date"></label>
+</div>
+
+<div class="section">PAREDES — INFORME A MEDIDA EM MILÍMETROS</div>
+<table><thead><tr><th>PAREDE</th><th>MEDIDA (mm)</th><th>RESULTADO</th></tr></thead><tbody id="paredes"></tbody></table>
+
+<div class="section">CANTOS — INFORME A MEDIDA EM MILÍMETROS</div>
+<table><thead><tr><th>CANTO</th><th>MEDIDA (mm)</th><th>RESULTADO</th></tr></thead><tbody id="cantos"></tbody></table>
+
+<div class="summary">
+<h2>RESULTADO FINAL</h2>
+<div class="cards">
+<div class="card">PAREDES OK<span class="number" id="percP">0%</span><small id="countP">0 de 17</small></div>
+<div class="card">CANTOS OK<span class="number" id="percC">0%</span><small id="countC">0 de 14</small></div>
+<div class="card">GERAL OK<span class="number" id="percG">0%</span><small id="countG">0 de 31</small></div>
+</div>
+<p style="font-size:11px;margin:8px 0 0;text-align:center">Critério: <b>até 5 mm = OK</b> | <b>acima de 5 mm = IRREGULAR</b></p>
+</div>
+
+<div class="buttons">
+<button onclick="gerarPDF()">📄 SALVAR / GERAR PDF</button>
+<button class="secondary" onclick="limpar()">LIMPAR</button>
+<button id="installBtn" onclick="instalarApp()">📱 INSTALAR APP</button>
+</div>
+<div class="saved" id="saved"></div>
+</div>
+
+<script>
+const KEY="ficha_medicao_paredes_cantos_v2";
+
+function criar(id,prefixo,qtd){
+ const tb=document.getElementById(id);
+ for(let i=1;i<=qtd;i++){
+   const tr=document.createElement("tr");
+   tr.innerHTML=`<td><b>${prefixo}${i}</b></td>
+   <td><input class="medicao ${prefixo==='P'?'parede':'canto'}" id="${prefixo}${i}" type="number" min="0" step="0.1" inputmode="decimal" placeholder="0,0"></td>
+   <td id="s${prefixo}${i}" class="status naopreenchido">—</td>`;
+   tb.appendChild(tr);
+ }
+}
+criar("paredes","P",17); criar("cantos","C",14);
+
+document.querySelectorAll("input").forEach(i=>{
+ i.addEventListener("input",()=>{atualizar();salvarAutomaticamente()});
+ i.addEventListener("change",()=>{atualizar();salvarAutomaticamente()});
+});
+
+function resultado(input,status){
+ if(input.value===""){status.textContent="—";status.className="status naopreenchido";return false}
+ const v=parseFloat(input.value);
+ if(v<=5){status.textContent="OK";status.className="status ok";return true}
+ status.textContent="IRREGULAR";status.className="status irregular";return false;
+}
+
+function atualizar(){
+ let po=0,co=0;
+ for(let i=1;i<=17;i++) if(resultado(document.getElementById("P"+i),document.getElementById("sP"+i))) po++;
+ for(let i=1;i<=14;i++) if(resultado(document.getElementById("C"+i),document.getElementById("sC"+i))) co++;
+ document.getElementById("percP").textContent=(po/17*100).toFixed(1)+"%";
+ document.getElementById("percC").textContent=(co/14*100).toFixed(1)+"%";
+ document.getElementById("percG").textContent=((po+co)/31*100).toFixed(1)+"%";
+ document.getElementById("countP").textContent=po+" de 17";
+ document.getElementById("countC").textContent=co+" de 14";
+ document.getElementById("countG").textContent=(po+co)+" de 31";
+}
+
+function dados(){
+ let d={ciclo:document.getElementById("ciclo").value,apt:document.getElementById("apt").value,
+ dataPre:document.getElementById("dataPre").value,dataPos:document.getElementById("dataPos").value,medidas:{}};
+ document.querySelectorAll("input").forEach(i=>d.medidas[i.id]=i.value);
+ return d;
+}
+function salvarAutomaticamente(){
+ localStorage.setItem(KEY,JSON.stringify(dados()));
+ document.getElementById("saved").textContent="✓ Dados salvos automaticamente neste celular";
+}
+function carregar(){
+ const x=localStorage.getItem(KEY); if(!x)return;
+ try{
+  const d=JSON.parse(x);
+  ["ciclo","apt","dataPre","dataPos"].forEach(k=>document.getElementById(k).value=d[k]||"");
+  Object.entries(d.medidas||{}).forEach(([k,v])=>{if(document.getElementById(k))document.getElementById(k).value=v});
+  atualizar();
+  document.getElementById("saved").textContent="✓ Dados recuperados automaticamente";
+ }catch(e){}
+}
+function gerarPDF(){
+ salvarAutomaticamente();
+ document.title="Medicao_"+(document.getElementById("apt").value||"Apartamento");
+ window.print();
+}
+function limpar(){
+ if(confirm("Apagar todas as medidas e dados salvos?")){
+  localStorage.removeItem(KEY);
+  document.querySelectorAll("input").forEach(i=>i.value="");
+  atualizar();
+  document.getElementById("saved").textContent="Dados apagados";
+ }
+}
+carregar(); atualizar();
+</script>
+
+<script>
+let deferredPrompt=null;
+window.addEventListener("beforeinstallprompt",e=>{
+ e.preventDefault(); deferredPrompt=e;
+ const b=document.getElementById("installBtn"); if(b)b.style.display="block";
+});
+async function instalarApp(){
+ if(!deferredPrompt)return;
+ deferredPrompt.prompt();
+ await deferredPrompt.userChoice;
+ deferredPrompt=null;
+ const b=document.getElementById("installBtn"); if(b)b.style.display="none";
+}
+window.addEventListener("appinstalled",()=>{
+ const b=document.getElementById("installBtn"); if(b)b.style.display="none";
+});
+if("serviceWorker" in navigator){
+ window.addEventListener("load",()=>navigator.serviceWorker.register("service-worker.js").catch(()=>{}));
+}
+</script>
+</body>
+</html>
